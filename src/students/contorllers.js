@@ -1,72 +1,98 @@
-const { query } = require("express");
-const pool = require("../../db");
+const sequelize = require("../../db");
 const queries = require("./queries");
 
-const getStudents = (req, res) => {
-  pool.query(queries.getStudents, (error, results) => {
-    if (error) throw error;
-    res.status(200).json(results.rows);
-  });
+const getStudents = async (req, res) => {
+  try {
+    const [results] = await sequelize.query(queries.getStudents);
+    res.status(200).json({ success: true, data: results });
+  } catch (error) {
+    console.error("Error fetching students:", error);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
 };
 
-const getStudentsById = (req, res) => {
+const getStudentsById = async (req, res) => {
   const id = parseInt(req.params.id);
-  pool.query(queries.getStudentsById, [id], (error, results) => {
-    if (error) throw error;
-    res.status(200).json(results.rows);
-  });
+  try {
+    const [results] = await sequelize.query(queries.getStudentsById, {
+      replacements: [id],
+    });
+    if (results.length === 0) {
+      res.status(404).json({ success: false, error: "Student not found" });
+    } else {
+      res.status(200).json({ success: true, data: results });
+    }
+  } catch (error) {
+    console.error("Error fetching student by ID:", error);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
 };
 
-const addStudent = (req, res) => {
+const addStudent = async (req, res) => {
   const { name, email, age, dob } = req.body;
 
-  //Check if email exists
-  pool.query(queries.checkEmailExists, [email], (error, results) => {
-    if (results.rows.length) {
-      res.send("Email already exists");
+  try {
+    // Check if email exists
+    const [emailCheck] = await sequelize.query(queries.checkEmailExists, {
+      replacements: [email],
+    });
+
+    if (emailCheck.length > 0) {
+      res.status(400).json({ success: false, error: "Email already exists" });
+    } else {
+      // Add student to DB
+      await sequelize.query(queries.addStudent, {
+        replacements: [name, email, age, dob],
+      });
+      res.status(201).json({ success: true, message: "Student Created Successfully" });
+      console.log("Student Created");
     }
-    //add student to DB
-    pool.query(
-      queries.addStudent,
-      [name, email, age, dob],
-      (error, results) => {
-        if (error) throw error;
-        res.status(201).send("Student Created Successfully");
-        console.log("Student Created");
-      }
-    );
-  });
+  } catch (error) {
+    console.error("Error adding student:", error);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
 };
 
-const removeStudent = (req, res) => {
+const removeStudent = async (req, res) => {
   const id = parseInt(req.params.id);
 
-  pool.query(queries.removeStudent, [id], (error, results) =>{
-    const noStudentFound = !results.rows.length;
-    if (noStudentFound) {
-      res.send("Student does not exists in the database");
-    }
-    pool.query(queries.removeStudent, [id], (error, results) => {
-      if (error) throw error;
-      res.status(200).send("Students remove successfully");
+  try {
+    const [results] = await sequelize.query(queries.removeStudent, {
+      replacements: [id],
     });
-  });
+
+    if (results.affectedRows === 0) {
+      res.status(404).json({ success: false, error: "Student does not exist in the database" });
+    } else {
+      res.status(200).json({ success: true, message: "Student removed successfully" });
+    }
+  } catch (error) {
+    console.error("Error removing student:", error);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
 };
 
-const updateStudent = (req, res) => {
+const updateStudent = async (req, res) => {
   const id = parseInt(req.params.id);
   const { name } = req.body;
 
-  pool.query(queries.getStudentsById, [id], (error, results) => {
-    const noStudentFound = !results.rows.length;
-    if (noStudentFound) {
-      res.send("Student does not exists in the database");
-    }
-    pool.query(queries.updateStudent, [name, id], (error, results) => {
-      if (error) throw error;
-      res.status(200).send("Students updated successfully");
+  try {
+    const [results] = await sequelize.query(queries.getStudentsById, {
+      replacements: [id],
     });
-  });
+
+    if (results.length === 0) {
+      res.status(404).json({ success: false, error: "Student does not exist in the database" });
+    } else {
+      await sequelize.query(queries.updateStudent, {
+        replacements: [name, id],
+      });
+      res.status(200).json({ success: true, message: "Student updated successfully" });
+    }
+  } catch (error) {
+    console.error("Error updating student:", error);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
 };
 
 module.exports = {
